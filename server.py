@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
 import json
-import urllib.request
+import requests
 import dotenv
 
 dotenv.load_dotenv()
@@ -63,10 +63,9 @@ def process_image(request: PReq):
 
     try:
         req_url = f"https://api.github.com/repos/{request.repo}/contents/submissions"
-        req = urllib.request.Request(req_url, headers={"User-Agent": "a"})
-
-        with urllib.request.urlopen(req) as res:
-            submissions_data = json.loads(res.read())
+        res = requests.get(req_url, headers={"User-Agent": "a"})
+        res.raise_for_status()
+        submissions_data = res.json()
 
         for item in submissions_data:
             submission_name = item.get("name")
@@ -75,9 +74,9 @@ def process_image(request: PReq):
 
             def fetch_text(url: str) -> str:
                 try:
-                    req = urllib.request.Request(url, headers={"User-Agent": "a"})
-                    with urllib.request.urlopen(req) as text_response:
-                        return text_response.read().decode().strip()
+                    text_response = requests.get(url, headers={"User-Agent": "a"})
+                    text_response.raise_for_status()
+                    return text_response.text.strip()
                 except:
                     return ""
 
@@ -101,11 +100,10 @@ def process_image(request: PReq):
                 f"https://api.memegen.link/images/{meme_name}{captions_path}.png"
             )
 
-            image_req = urllib.request.Request(image_url, headers={"User-Agent": "a"})
-            with urllib.request.urlopen(image_req) as image_response, open(
-                f"output/{submission_name}.png", "wb"
-            ) as out:
-                out.write(image_response.read())
+            image_response = requests.get(image_url, headers={"User-Agent": "a"})
+            image_response.raise_for_status()
+            with open(f"output/{submission_name}.png", "wb") as out:
+                out.write(image_response.content)
 
         return {"status": "ok"}
     except Exception as e:
