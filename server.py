@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
@@ -11,6 +12,29 @@ dotenv.load_dotenv()
 os.makedirs("output", exist_ok=True)
 
 app = FastAPI()
+
+cors_origins_raw = os.getenv("CORS_ORIGINS")
+if (
+    not cors_origins_raw
+    or not cors_origins_raw.strip()
+    or cors_origins_raw.strip().upper() == "NONE"
+):
+    origins = ["*"]
+else:
+    origins = [
+        origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()
+    ]
+    if not origins:
+        origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 progress = 0
 
 
@@ -28,6 +52,11 @@ class SReq(Auth):
 
 class PReq(Auth):
     repo: str
+
+
+@app.get("/")
+def get_index():
+    return FileResponse("index.html")
 
 
 @app.post("/progress/increment")
