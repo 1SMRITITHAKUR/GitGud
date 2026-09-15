@@ -67,45 +67,52 @@ def process_image(request: PReq):
         res.raise_for_status()
         submissions_data = res.json()
 
+        errors: list[Exception] = []
         for item in submissions_data:
-            submission_name = item.get("name")
-            if not submission_name:
-                continue
+            try:
+                submission_name = item.get("name")
+                if not submission_name:
+                    continue
 
-            def fetch_text(url: str) -> str:
-                try:
-                    text_response = requests.get(url, headers={"User-Agent": "a"})
-                    text_response.raise_for_status()
-                    return text_response.text.strip()
-                except:
-                    return ""
+                def fetch_text(url: str) -> str:
+                    try:
+                        text_response = requests.get(url, headers={"User-Agent": "a"})
+                        text_response.raise_for_status()
+                        return text_response.text.strip()
+                    except:
+                        return ""
 
-            base_url = f"https://raw.githubusercontent.com/{request.repo}/main/submissions/{submission_name}"
-            meme_name = fetch_text(f"{base_url}/meme_name.txt")
+                base_url = f"https://raw.githubusercontent.com/{request.repo}/main/submissions/{submission_name}"
+                meme_name = fetch_text(f"{base_url}/meme_name.txt")
 
-            if not meme_name:
-                continue
+                if not meme_name:
+                    continue
 
-            captions = []
-            idx = 1
-            caption = fetch_text(f"{base_url}/caption{idx}.txt")
-
-            while caption:
-                captions.append(caption.replace(" ", "_"))
-                idx += 1
+                captions = []
+                idx = 1
                 caption = fetch_text(f"{base_url}/caption{idx}.txt")
 
-            captions_path = "/" + "/".join(captions) if captions else ""
-            image_url = (
-                f"https://api.memegen.link/images/{meme_name}{captions_path}.png"
-            )
+                while caption:
+                    captions.append(caption.replace(" ", "_"))
+                    idx += 1
+                    caption = fetch_text(f"{base_url}/caption{idx}.txt")
 
-            image_response = requests.get(image_url, headers={"User-Agent": "a"})
-            image_response.raise_for_status()
-            with open(f"output/{submission_name}.png", "wb") as out:
-                out.write(image_response.content)
+                captions_path = "/" + "/".join(captions) if captions else ""
+                image_url = (
+                    f"https://api.memegen.link/images/{meme_name}{captions_path}.png"
+                )
 
-        return {"status": "ok"}
+                image_response = requests.get(image_url, headers={"User-Agent": "a"})
+                image_response.raise_for_status()
+                with open(f"output/{submission_name}.png", "wb") as out:
+                    out.write(image_response.content)
+            except Exception as e:
+                errors.append(e)
+
+        for e in errors:
+            e = str(e)
+
+        return {"status": "ok", "errors": [str(e) for e in errors]}
     except Exception as e:
         return {"error": str(e)}
 
