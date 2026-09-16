@@ -5,7 +5,13 @@ from pydantic import BaseModel
 import os
 import json
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import dotenv
+import logging
+
+# Clean, minimal logging format
+logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
 dotenv.load_dotenv()
 
@@ -88,14 +94,19 @@ def get_progress():
 
 def process_images_background(repo: str, requested_submissions: list[str] | None):
     try:
+        session = requests.Session()
+        retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
+        session.mount("https://", HTTPAdapter(max_retries=retries))
+
         headers = {"User-Agent": "a"}
         github_token = os.getenv("GITHUB_TOKEN")
         if github_token:
             headers["Authorization"] = f"token {github_token}"
 
         req_url = f"https://api.github.com/repos/{repo}/contents/submissions"
-        res = requests.get(req_url, headers=headers)
+        res = session.get(req_url, headers=headers)
         if res.status_code == 404:
+            logging.info("No submissions folder found.")
             return
         res.raise_for_status()
         all_submissions = [
@@ -116,12 +127,18 @@ def process_images_background(repo: str, requested_submissions: list[str] | None
             if not os.path.exists(f"output/{sub}.png"):
                 submissions_to_process.add(sub)
 
+        if not submissions_to_process:
+            logging.info("Everything up to date. No images to process.")
+            return
+
+        logging.info(f"Processing {len(submissions_to_process)} submissions...")
+
         for submission_name in submissions_to_process:
             try:
 
                 def fetch_text(url: str) -> str:
                     try:
-                        text_response = requests.get(url, headers=headers)
+                        text_response = session.get(url, headers=headers)
                         text_response.raise_for_status()
                         return text_response.text.strip()
                     except:
@@ -147,14 +164,17 @@ def process_images_background(repo: str, requested_submissions: list[str] | None
                     f"https://api.memegen.link/images/{meme_name}{captions_path}.png"
                 )
 
-                image_response = requests.get(image_url, headers={"User-Agent": "a"})
+                image_response = session.get(image_url, headers={"User-Agent": "a"})
                 image_response.raise_for_status()
                 with open(f"output/{submission_name}.png", "wb") as out:
                     out.write(image_response.content)
+                logging.info(f"✓ Saved image for '{submission_name}'")
             except Exception as e:
-                print(f"Error processing {submission_name}: {e}")
+                logging.error(f"✗ Failed '{submission_name}': {e}")
+
+        logging.info("Finished background processing.")
     except Exception as e:
-        print(f"Background task failed: {e}")
+        logging.error(f"Background task failed: {e}")
 
 
 @app.post("/image/set")
