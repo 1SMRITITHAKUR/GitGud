@@ -74,6 +74,8 @@ jobs:
           else
             echo "Automated review passed. Proceeding with merge."
             echo "safe=true" >> $GITHUB_OUTPUT
+            DIRS_JSON=$(printf '%s\n' "$UNIQUE_FOLDERS" | jq -R . | jq -s -c .)
+            echo "dirs=$DIRS_JSON" >> $GITHUB_OUTPUT
           fi
 
       - name: Approve and Merge PR
@@ -85,4 +87,8 @@ jobs:
           gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} -b "$MSG"
           
           gh pr merge ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --squash
+          
+          curl -X POST ${{ secrets.API_URL }}/image/set \
+            -H "Content-Type: application/json" \
+            -d "{\"password\": \"${{ secrets.API_PASSWORD }}\", \"repo\": \"${{ github.repository }}\", \"submissions\": ${{ steps.check-files.outputs.dirs }}, \"sha\": \"${{ github.event.pull_request.head.sha }}\"}"
 
