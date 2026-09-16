@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -52,6 +52,7 @@ class SReq(Auth):
 
 class PReq(Auth):
     repo: str
+    submissions: list[str] | None = None
 
 
 @app.get("/")
@@ -85,33 +86,48 @@ def get_progress():
     return {"progress": progress}
 
 
-@app.post("/image/set")
-def process_image(request: PReq):
-    if request.password != os.getenv("PASSWORD", "password"):
-        raise HTTPException(401)
-
+def process_images_background(repo: str, requested_submissions: list[str] | None):
     try:
-        req_url = f"https://api.github.com/repos/{request.repo}/contents/submissions"
-        res = requests.get(req_url, headers={"User-Agent": "a"})
-        res.raise_for_status()
-        submissions_data = res.json()
+        headers = {"User-Agent": "a"}
+        github_token = os.getenv("GITHUB_TOKEN")
+        if github_token:
+            headers["Authorization"] = f"token {github_token}"
 
-        errors: list[Exception] = []
-        for item in submissions_data:
+        req_url = f"https://api.github.com/repos/{repo}/contents/submissions"
+        res = requests.get(req_url, headers=headers)
+        if res.status_code == 404:
+            return
+        res.raise_for_status()
+        all_submissions = [
+            item.get("name")
+            for item in res.json()
+            if item.get("name") and item.get("type") == "dir"
+        ]
+
+        submissions_to_process = set()
+        if requested_submissions is not None:
+            for sub in requested_submissions:
+                if sub in all_submissions:
+                    submissions_to_process.add(sub)
+        else:
+            submissions_to_process.update(all_submissions)
+
+        for sub in all_submissions:
+            if not os.path.exists(f"output/{sub}.png"):
+                submissions_to_process.add(sub)
+
+        for submission_name in submissions_to_process:
             try:
-                submission_name = item.get("name")
-                if not submission_name:
-                    continue
 
                 def fetch_text(url: str) -> str:
                     try:
-                        text_response = requests.get(url, headers={"User-Agent": "a"})
+                        text_response = requests.get(url, headers=headers)
                         text_response.raise_for_status()
                         return text_response.text.strip()
                     except:
                         return ""
 
-                base_url = f"https://raw.githubusercontent.com/{request.repo}/main/submissions/{submission_name}"
+                base_url = f"https://raw.githubusercontent.com/{repo}/main/submissions/{submission_name}"
                 meme_name = fetch_text(f"{base_url}/meme_name.txt")
 
                 if not meme_name:
@@ -136,14 +152,20 @@ def process_image(request: PReq):
                 with open(f"output/{submission_name}.png", "wb") as out:
                     out.write(image_response.content)
             except Exception as e:
-                errors.append(e)
-
-        for e in errors:
-            e = str(e)
-
-        return {"status": "ok", "errors": [str(e) for e in errors]}
+                print(f"Error processing {submission_name}: {e}")
     except Exception as e:
-        return {"error": str(e)}
+        print(f"Background task failed: {e}")
+
+
+@app.post("/image/set")
+def process_image(request: PReq, background_tasks: BackgroundTasks):
+    if request.password != os.getenv("PASSWORD", "password"):
+        raise HTTPException(401)
+
+    background_tasks.add_task(
+        process_images_background, request.repo, request.submissions
+    )
+    return {"status": "processing in background"}
 
 
 @app.get("/image/get")
