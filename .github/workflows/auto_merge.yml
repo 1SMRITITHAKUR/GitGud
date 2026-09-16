@@ -1,0 +1,96 @@
+name: Safe Auto Merge Submissions
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  safe-auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: Check changed files
+        id: check-files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json files --jq '.files[].path' > pr_files.txt
+          
+          echo "Analyzing modified files:"
+          cat pr_files.txt
+          
+          UNSAFE=0
+          declare -a FOLDERS=()
+          ERRORS=""
+          
+          while IFS= read -r FILE; do
+            if [ -z "$FILE" ]; then continue; fi
+            if [[ "$FILE" != submissions/* ]] || [[ "$FILE" != *.txt ]]; then
+              ERRORS="$ERRORS- Unauthorized file: \`$FILE\` (Only .txt files inside \`submissions/\` are allowed)\n"
+              UNSAFE=1
+              continue
+            fi
+            
+            FOLDER=$(echo "$FILE" | cut -d'/' -f2)
+            
+            DEPTH=$(echo "$FILE" | tr -cd '/' | wc -c | tr -d ' ')
+            if [ "$DEPTH" -ne 2 ]; then
+               ERRORS="$ERRORS- Invalid directory depth: \`$FILE\` (Nested folders are not allowed)\n"
+               UNSAFE=1
+               continue
+            fi
+            
+            if [ -f "$FILE" ]; then
+              CHAR_COUNT=$(wc -c < "$FILE" | tr -d ' ')
+              if [ "$CHAR_COUNT" -gt 200 ]; then
+                 ERRORS="$ERRORS- File too large: \`$FILE\` ($CHAR_COUNT chars. Max is 200)\n"
+                 UNSAFE=1
+                 continue
+              fi
+            fi
+            
+            FOLDERS+=("$FOLDER")
+          done < pr_files.txt
+          
+          UNIQUE_FOLDERS=$(printf "%s\n" "${FOLDERS[@]}" | sort -u | grep -v '^$')
+          FOLDER_COUNT=$(echo "$UNIQUE_FOLDERS" | wc -l)
+          
+          if [ "$FOLDER_COUNT" -ne 1 ] && [ "$FOLDER_COUNT" -gt 0 ]; then
+            ERRORS="$ERRORS- Multiple folders modified: You modified $FOLDER_COUNT directories. Please only modify one submission folder per PR.\n"
+            UNSAFE=1
+          fi
+          
+          if [ "$UNSAFE" -eq 1 ]; then
+            echo -e "Automated review failed:\n$ERRORS"
+            
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} -b "Automated review failed. This pull request cannot be merged.
+
+The following security violations were detected:
+$(echo -e "$ERRORS")
+Please resolve these issues to proceed."
+            
+            echo "safe=false" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "Automated review passed. Proceeding with merge."
+            echo "safe=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Approve and Merge PR
+        if: steps.check-files.outputs.safe == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr review ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --approve -b "MERGED! Congrats on your first successful PR :D
+          Check the /memes page to SEE UR MEME"
+          
+          gh pr merge ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --squash
+
