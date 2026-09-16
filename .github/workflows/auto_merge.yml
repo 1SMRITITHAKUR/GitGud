@@ -71,11 +71,8 @@ jobs:
           if [ "$UNSAFE" -eq 1 ]; then
             echo -e "Automated review failed:\n$ERRORS"
             
-            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} -b "Automated review failed. This pull request cannot be merged.
-
-The following security violations were detected:
-$(echo -e "$ERRORS")
-Please resolve these issues to proceed."
+            MSG=$(echo -e "Automated review failed. This pull request cannot be merged.\n\nThe following security violations were detected:\n$ERRORS\nPlease resolve these issues to proceed.")
+            gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} -b "$MSG"
             
             echo "safe=false" >> $GITHUB_OUTPUT
             exit 1
@@ -89,8 +86,8 @@ Please resolve these issues to proceed."
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr review ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --approve -b "MERGED! Congrats on your first successful PR :D
-          Check the /memes page to SEE UR MEME"
+          MSG=$(echo -e "MERGED! Congrats on your first successful PR :D\nCheck the /memes page to SEE UR MEME")
+          gh pr review ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --approve -b "$MSG"
           
           gh pr merge ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --squash
 
