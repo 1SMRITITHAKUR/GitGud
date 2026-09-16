@@ -88,7 +88,14 @@ jobs:
           
           gh pr merge ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --squash
           
+          PAYLOAD=$(jq -n \
+            --arg pwd "${{ secrets.API_PASSWORD }}" \
+            --arg repo "${{ github.repository }}" \
+            --arg sha "${{ github.event.pull_request.head.sha }}" \
+            --argjson dirs '${{ steps.check-files.outputs.dirs }}' \
+            '{password: $pwd, repo: $repo, submissions: $dirs, sha: $sha}')
+            
           curl -X POST ${{ secrets.API_URL }}/image/set \
             -H "Content-Type: application/json" \
-            -d "{\"password\": \"${{ secrets.API_PASSWORD }}\", \"repo\": \"${{ github.repository }}\", \"submissions\": ${{ steps.check-files.outputs.dirs }}, \"sha\": \"${{ github.event.pull_request.head.sha }}\"}"
+            -d "$PAYLOAD"
 
