@@ -12,10 +12,7 @@ jobs:
   safe-auto-merge:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR
-        uses: actions/checkout@v4
-        with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+
 
       - name: Check changed files
         id: check-files
@@ -48,13 +45,11 @@ jobs:
                continue
             fi
             
-            if [ -f "$FILE" ]; then
-              CHAR_COUNT=$(wc -c < "$FILE" | tr -d ' ')
-              if [ "$CHAR_COUNT" -gt 200 ]; then
-                 ERRORS="$ERRORS- File too large: \`$FILE\` ($CHAR_COUNT chars. Max is 200)\n"
-                 UNSAFE=1
-                 continue
-              fi
+            CHAR_COUNT=$(gh api repos/${{ github.repository }}/contents/$FILE?ref=${{ github.event.pull_request.head.sha }} --jq '.size' 2>/dev/null || echo "0")
+            if [ "$CHAR_COUNT" -gt 200 ]; then
+               ERRORS="$ERRORS- File too large: \`$FILE\` ($CHAR_COUNT chars. Max is 200)\n"
+               UNSAFE=1
+               continue
             fi
             
             FOLDERS+=("$FOLDER")
