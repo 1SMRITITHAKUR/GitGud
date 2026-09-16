@@ -41,7 +41,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-progress = 0
+PROGRESS_FILE = "output/progress.txt"
+
+
+def get_saved_progress() -> int:
+    if os.path.exists(PROGRESS_FILE):
+        try:
+            with open(PROGRESS_FILE, "r") as f:
+                return int(f.read().strip())
+        except:
+            return 0
+    return 0
+
+
+def set_saved_progress(val: int):
+    with open(PROGRESS_FILE, "w") as f:
+        f.write(str(val))
 
 
 class Auth(BaseModel):
@@ -71,9 +86,9 @@ def increment_progress(request: IReq):
     if request.password != os.getenv("PASSWORD", "password"):
         raise HTTPException(401)
 
-    global progress
-    progress += request.amount
-    return {"progress": progress}
+    new_progress = get_saved_progress() + request.amount
+    set_saved_progress(new_progress)
+    return {"progress": new_progress}
 
 
 @app.post("/progress/set")
@@ -81,15 +96,13 @@ def set_progress(request: SReq):
     if request.password != os.getenv("PASSWORD", "password"):
         raise HTTPException(401)
 
-    global progress
-    progress = request.value
-    return {"progress": progress}
+    set_saved_progress(request.value)
+    return {"progress": request.value}
 
 
 @app.get("/progress/get")
 def get_progress():
-    global progress
-    return {"progress": progress}
+    return {"progress": get_saved_progress()}
 
 
 def process_images_background(repo: str, requested_submissions: list[str] | None):
@@ -144,6 +157,21 @@ def process_images_background(repo: str, requested_submissions: list[str] | None
                     except:
                         return ""
 
+                def sanitize_memegen_text(text: str) -> str:
+                    text = text.replace("-", "--")
+                    text = text.replace("_", "__")
+                    text = text.replace(" ", "_")
+                    text = text.replace("?", "~q")
+                    text = text.replace("&", "~a")
+                    text = text.replace("%", "~p")
+                    text = text.replace("#", "~h")
+                    text = text.replace("/", "~s")
+                    text = text.replace("\\", "~b")
+                    text = text.replace("<", "~l")
+                    text = text.replace(">", "~g")
+                    text = text.replace('"', "''")
+                    return text
+
                 base_url = f"https://raw.githubusercontent.com/{repo}/main/submissions/{submission_name}"
                 meme_name = fetch_text(f"{base_url}/meme_name.txt")
 
@@ -155,7 +183,7 @@ def process_images_background(repo: str, requested_submissions: list[str] | None
                 caption = fetch_text(f"{base_url}/caption{idx}.txt")
 
                 while caption:
-                    captions.append(caption.replace(" ", "_"))
+                    captions.append(sanitize_memegen_text(caption))
                     idx += 1
                     caption = fetch_text(f"{base_url}/caption{idx}.txt")
 
@@ -166,8 +194,13 @@ def process_images_background(repo: str, requested_submissions: list[str] | None
 
                 image_response = session.get(image_url, headers={"User-Agent": "a"})
                 image_response.raise_for_status()
-                with open(f"output/{submission_name}.png", "wb") as out:
+
+                tmp_path = f"output/tmp_{submission_name}.png"
+                final_path = f"output/{submission_name}.png"
+                with open(tmp_path, "wb") as out:
                     out.write(image_response.content)
+                os.replace(tmp_path, final_path)
+
                 logging.info(f"✓ Saved image for '{submission_name}'")
             except Exception as e:
                 logging.error(f"✗ Failed '{submission_name}': {e}")
