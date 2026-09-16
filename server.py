@@ -74,6 +74,7 @@ class SReq(Auth):
 class PReq(Auth):
     repo: str
     submissions: list[str] | None = None
+    sha: str | None = None
 
 
 @app.get("/")
@@ -105,7 +106,9 @@ def get_progress():
     return {"progress": get_saved_progress()}
 
 
-def process_images_background(repo: str, requested_submissions: list[str] | None):
+def process_images_background(
+    repo: str, requested_submissions: list[str] | None, sha: str | None = None
+):
     try:
         session = requests.Session()
         retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
@@ -117,6 +120,9 @@ def process_images_background(repo: str, requested_submissions: list[str] | None
             headers["Authorization"] = f"token {github_token}"
 
         req_url = f"https://api.github.com/repos/{repo}/contents/submissions"
+        if sha:
+            req_url += f"?ref={sha}"
+
         res = session.get(req_url, headers=headers)
         if res.status_code == 404:
             logging.info("No submissions folder found.")
@@ -172,7 +178,8 @@ def process_images_background(repo: str, requested_submissions: list[str] | None
                     text = text.replace('"', "''")
                     return text
 
-                base_url = f"https://raw.githubusercontent.com/{repo}/main/submissions/{submission_name}"
+                ref = sha if sha else "main"
+                base_url = f"https://raw.githubusercontent.com/{repo}/{ref}/submissions/{submission_name}"
                 meme_name = fetch_text(f"{base_url}/meme_name.txt")
 
                 if not meme_name:
@@ -216,7 +223,7 @@ def process_image(request: PReq, background_tasks: BackgroundTasks):
         raise HTTPException(401)
 
     background_tasks.add_task(
-        process_images_background, request.repo, request.submissions
+        process_images_background, request.repo, request.submissions, request.sha
     )
     return {"status": "processing in background"}
 
@@ -239,4 +246,11 @@ def get_raw_image(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(404, detail="Image not found")
 
-    return FileResponse(file_path)
+    return FileResponse(
+        file_path,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )

@@ -29,4 +29,4 @@ jobs:
           
           curl -X POST ${{ secrets.API_URL }}/image/set \
             -H "Content-Type: application/json" \
-            -d "{\"password\": \"${{ secrets.API_PASSWORD }}\", \"repo\": \"${{ github.repository }}\", \"submissions\": $DIRS}"
+            -d "{\"password\": \"${{ secrets.API_PASSWORD }}\", \"repo\": \"${{ github.repository }}\", \"submissions\": $DIRS, \"sha\": \"${{ github.sha }}\"}"
