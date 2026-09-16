@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Progress UI</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      text-align: center;
+      margin-top: 50px;
+      background: #f9f9f9;
+    }
+
+    .controls {
+      margin: 20px;
+    }
+
+    button {
+      font-size: 1.2em;
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+    }
+
+    input {
+      font-size: 1.2em;
+      padding: 10px;
+      margin: 5px;
+      text-align: center;
+    }
+
+    #progress-display {
+      font-size: 4em;
+      font-weight: bold;
+      margin: 20px;
+      color: #333;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="progress-display">-</div>
+  <div class="controls">
+    <input type="password" id="password" placeholder="Password">
+  </div>
+  <div class="controls">
+    <button onclick="updateProgress(-1)">-1</button>
+    <button onclick="setProgress(1)">SET 1</button>
+    <button onclick="updateProgress(1)">+1</button>
+  </div>
+  <div class="controls">
+    <button onclick="fetchProgress()">Fetch Progress</button>
+  </div>
+
+  <script>
+    async function fetchProgress() {
+      try {
+        const res = await fetch('/progress/get');
+        const data = await res.json();
+        document.getElementById('progress-display').innerText = data.progress;
+      } catch (e) {
+        document.getElementById('progress-display').innerText = 'Err';
+      }
+    }
+
+    async function updateProgress(amount) {
+      const password = document.getElementById('password').value;
+      try {
+        await fetch('/progress/increment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password, amount })
+        });
+        fetchProgress();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function setProgress(value) {
+      const password = document.getElementById('password').value;
+      try {
+        await fetch('/progress/set', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password, value })
+        });
+        fetchProgress();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    fetchProgress();
+    setInterval(fetchProgress, 10000);
+  </script>
+</body>
+
+</html>

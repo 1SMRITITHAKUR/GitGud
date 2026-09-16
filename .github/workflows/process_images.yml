@@ -1,0 +1,32 @@
+name: Process Submissions Images
+
+on:
+  push:
+    paths:
+      - 'submissions/**'
+
+jobs:
+  process_images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: submissions/**
+          json: true
+          escape_json: false
+
+      - name: Process mmemees
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          DIRS=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | jq -c 'map(split("/")[1]) | unique')
+          
+          curl -X POST ${{ secrets.API_URL }}/image/set \
+            -H "Content-Type: application/json" \
+            -d "{\"password\": \"${{ secrets.API_PASSWORD }}\", \"repo\": \"${{ github.repository }}\", \"submissions\": $DIRS, \"sha\": \"${{ github.sha }}\"}"
